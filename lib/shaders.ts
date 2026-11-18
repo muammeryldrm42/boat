@@ -202,7 +202,7 @@ void main(){
 `;
 
 export const FINISH_SHADER = {
-  uniforms: { tDiffuse: { value: null as unknown }, uTime: { value: 0 } },
+  uniforms: { tDiffuse: { value: null as unknown }, uTime: { value: 0 }, uSpeed: { value: 0 } },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
     void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
@@ -210,12 +210,28 @@ export const FINISH_SHADER = {
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform float uTime;
+    uniform float uSpeed;
     varying vec2 vUv;
     void main(){
       vec2 c = vUv - 0.5;
       float r = dot(c, c);
-      vec2 off = c * r * 0.014;
+      vec2 off = c * r * (0.014 + uSpeed * 0.012);
       vec3 col = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
+      // speed radial blur toward the edges
+      if (uSpeed > 0.02) {
+        vec3 acc = col;
+        for (int i = 1; i < 5; i++) {
+          float k = float(i) * 0.012 * uSpeed * smoothstep(0.02, 0.35, r);
+          acc += texture2D(tDiffuse, vUv - c * k).rgb;
+        }
+        col = acc / 5.0;
+      }
+      // gentle grade: cool shadows, warm highlights, a touch more contrast
+      float l = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(col, col * vec3(0.94, 1.0, 1.08), 1.0 - smoothstep(0.0, 0.5, l));
+      col = mix(col, col * vec3(1.06, 1.0, 0.92), smoothstep(0.5, 1.0, l));
+      col = (col - 0.5) * 1.07 + 0.5;
+      col = mix(vec3(dot(col, vec3(0.299, 0.587, 0.114))), col, 1.08);
       col *= 1.0 - smoothstep(0.12, 0.75, r * 1.7) * 0.6;
       float g = fract(sin(dot(vUv * vec2(1920.0, 1080.0) + uTime * 37.0, vec2(12.9898, 78.233))) * 43758.5453);
       col += (g - 0.5) * 0.028;

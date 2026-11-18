@@ -109,7 +109,7 @@ export const GALLEON: VesselSpec = {
   name: 'Galleon',
   create: createShip,
   crew: galleonCrew(),
-  physics: { maxSpeed: 15, accel: 0.45, turnRate: 0.3, rudderRate: 0.8, sailRate: 0.35 },
+  physics: { maxSpeed: 27, accel: 0.8, turnRate: 0.36, rudderRate: 0.8, sailRate: 0.35 },
   sternZ: -L / 2,
   waveSample: { x: 3.6, z: 13 },
   cannons: galleonCannons(),

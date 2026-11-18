@@ -88,12 +88,12 @@ export default function Scene() {
     const vessel = VESSELS[0];
 
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
 
     const fogDensity = storm ? 0.0042 : 0.0016;
@@ -623,6 +623,10 @@ export default function Scene() {
       fill.target.position.set(sailing.x, 6, sailing.z);
       hemi.intensity = 1.6 + flash * 3.5;
       bloom.strength = 0.42 + flash * 0.5;
+      const spN = Math.min(1, sailing.speed / 24);
+      finish.uniforms.uSpeed.value += (spN * spN - finish.uniforms.uSpeed.value) * Math.min(1, dt * 2);
+      const fovT = 48 + spN * 9;
+      if (Math.abs(camera.fov - fovT) > 0.01) { camera.fov += (fovT - camera.fov) * Math.min(1, dt * 1.5); camera.updateProjectionMatrix(); }
 
       for (const m of mist) {
         m.a += m.sp * dt;

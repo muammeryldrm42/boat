@@ -58,7 +58,7 @@ export class Sailing {
   x = 0;
   z = 0;
   heading = 0;
-  speed = 6;
+  speed = 12;
   sail = 0.85;
   rudder = 0;
   drive = 0;
