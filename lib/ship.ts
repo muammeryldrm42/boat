@@ -83,6 +83,21 @@ export function createShip(): Ship {
     map: hullTex.map, bumpMap: hullTex.bump, bumpScale: 2.2, roughness: 0.82, metalness: 0.02,
     vertexColors: true, side: THREE.DoubleSide,
   }));
+  // wet, weedy lower hull: darker, glossier and greener toward and below the waterline
+  hullMat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying float vHy;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHy = position.y;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vHy;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+      float wetK = 1.0 - smoothstep(-2.9, 0.6, vHy);
+      float weed = 1.0 - smoothstep(-3.6, -2.2, vHy);
+      diffuseColor.rgb *= mix(1.0, 0.45, wetK);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.10, 0.06), weed * 0.6);`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+      roughnessFactor = mix(roughnessFactor, 0.28, wetK);`);
+  };
   const deckMat = track(new THREE.MeshStandardMaterial({
     map: deckTex.map, bumpMap: deckTex.bump, bumpScale: 1.6, roughness: 0.9, side: THREE.DoubleSide,
   }));

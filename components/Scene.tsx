@@ -139,6 +139,19 @@ export default function Scene() {
     sky.renderOrder = -10;
     scene.add(sky);
 
+    // image based lighting from the procedural sky so wood, iron and cloth pick up real reflections
+    {
+      const envScene = new THREE.Scene();
+      const envSky = new THREE.Mesh(sky.geometry, skyMat);
+      envSky.frustumCulled = false;
+      envScene.add(envSky);
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envRT = pmrem.fromScene(envScene, 0, 1, 3000);
+      scene.environment = envRT.texture;
+      scene.environmentIntensity = storm ? 0.5 : 0.8;
+      pmrem.dispose();
+    }
+
     // ---- ocean ----
     const oceanMat = new THREE.ShaderMaterial({
       vertexShader: OCEAN_VERT,
