@@ -38,7 +38,9 @@ export default function Page() {
         <div className="row"><span>Heading</span><em><i id="hud-heading">000</i>&deg;</em></div>
         <div className="row"><span>Sail</span><em id="hud-sail">0%</em></div>
         <div className="row"><span>Wind</span><em id="hud-wind">-</em></div>
-        <p>W / S sail &nbsp; A / D rudder &nbsp; Q / E broadside &nbsp; drag to look</p>
+        <div className="row" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT' }))}><span>Time (T)</span><em id="hud-tod">NIGHT</em></div>
+        <div className="row" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyM' }))}><span>Sound (M)</span><em id="hud-snd">ON</em></div>
+        <p>W / S sail &nbsp; A / D rudder &nbsp; Q / E broadside &nbsp; T time &nbsp; M sound &nbsp; drag to look</p>
       </div>
       <div className="compass" aria-hidden>
         <div className="compass-ring">

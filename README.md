@@ -11,6 +11,9 @@ A drivable 17th century galleon with a living crew, built entirely in code with 
 
 - W / S (or Up / Down): set more / less sail
 - A / D (or Left / Right): rudder
+- Q / E: fire the left / right broadside
+- T: cycle time of day (night, dusk, day), also `?tod=night|dusk|day`
+- M: mute or unmute the procedural sound (starts after your first key press or click)
 - Drag to orbit the camera, scroll to zoom. On touch devices use the on-screen pads.
 - `?storm=1` turns on the storm weather (big waves, rain, lightning)
 

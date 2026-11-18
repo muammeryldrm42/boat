@@ -14,19 +14,23 @@ float fbm(vec2 p){
 export const SKY_GLSL = /* glsl */ `
 uniform vec3 uMoonDir;
 uniform float uFlash;
+uniform vec3 uHorizon;
+uniform vec3 uZenith;
+uniform vec3 uDisc;
+uniform vec3 uDiscCore;
 vec3 skyBase(vec3 d){
   float h = clamp(d.y, 0.0, 1.0);
-  vec3 horizon = vec3(0.05, 0.082, 0.1);
-  vec3 zenith = vec3(0.006, 0.011, 0.02);
-  vec3 c = mix(horizon, zenith, pow(h, 0.4));
+  vec3 c = mix(uHorizon, uZenith, pow(h, 0.4));
+  float sunGlow = pow(max(dot(normalize(vec3(d.x, max(d.y, 0.0) * 0.6, d.z)), uMoonDir), 0.0), 6.0);
+  c += uDisc * sunGlow * 0.35 * pow(1.0 - h, 2.0);
   c += uFlash * vec3(0.5, 0.58, 0.8) * (0.35 + 0.65 * pow(1.0 - h, 2.0));
   return c;
 }
 vec3 moonTerm(vec3 d){
   float m = max(dot(d, uMoonDir), 0.0);
-  vec3 c = vec3(0.45, 0.62, 0.7) * pow(m, 10.0) * 0.22;
-  c += vec3(0.6, 0.78, 0.9) * pow(m, 90.0) * 0.5;
-  c += vec3(1.0, 0.97, 0.9) * smoothstep(0.99935, 0.99965, m) * 7.0;
+  vec3 c = uDisc * pow(m, 10.0) * 0.36;
+  c += uDisc * pow(m, 90.0) * 1.07;
+  c += uDiscCore * smoothstep(0.99935, 0.99965, m);
   return c;
 }
 vec3 skyColor(vec3 d){ return skyBase(d) + moonTerm(d); }
@@ -45,6 +49,9 @@ export const SKY_FRAG = /* glsl */ `
 varying vec3 vDir;
 uniform float uTime;
 uniform float uCover;
+uniform float uStars;
+uniform vec3 uCloudDark;
+uniform vec3 uCloudLit;
 ${NOISE_GLSL}
 ${SKY_GLSL}
 void main(){
@@ -66,7 +73,7 @@ void main(){
     rim = clamp((n - shifted) * 7.0 + 0.2, 0.0, 1.0);
   }
   float lit = smoothstep(-0.2, 1.0, dot(d, uMoonDir));
-  vec3 cloudCol = mix(vec3(0.010, 0.016, 0.023), vec3(0.16, 0.2, 0.25), rim * lit);
+  vec3 cloudCol = mix(uCloudDark, uCloudLit, rim * lit);
   cloudCol += uFlash * vec3(0.38, 0.44, 0.62) * (0.45 + 0.55 * fbm(uv * 2.0));
   vec3 col = mix(base, cloudCol, cl * 0.93) + moonTerm(d) * (1.0 - cl * 0.9);
   vec2 su = vec2(atan(d.z, d.x) * 46.0, d.y * 92.0);
@@ -74,7 +81,7 @@ void main(){
   vec2 sf = fract(su) - 0.5;
   float sh = hash(sid);
   float star = step(0.992, sh) * smoothstep(0.16, 0.0, length(sf)) * (0.4 + 0.6 * hash(sid + 3.7));
-  col += vec3(0.8, 0.88, 1.0) * star * 0.7 * (1.0 - cl) * smoothstep(0.03, 0.25, d.y) * (1.0 - clamp(uFlash, 0.0, 1.0)) * (0.8 + 0.2 * sin(uTime * 2.0 + sh * 40.0));
+  col += vec3(0.8, 0.88, 1.0) * star * 0.7 * uStars * (1.0 - cl) * smoothstep(0.03, 0.25, d.y) * (1.0 - clamp(uFlash, 0.0, 1.0)) * (0.8 + 0.2 * sin(uTime * 2.0 + sh * 40.0));
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -113,7 +120,7 @@ void main(){
   vec3 dPdz = vec3(-dxz, dyz, 1.0 - dzz);
   vN = normalize(cross(dPdz, dPdx));
   float jac = (1.0 - dxx) * (1.0 - dzz) - dxz * dxz;
-  vFoam = max(smoothstep(0.7, 0.36, jac), smoothstep(0.6, 1.0, disp.y / max(sumA, 0.001)) * 0.5 * fade);
+  vFoam = max(smoothstep(0.7, 0.36, jac), smoothstep(0.82, 1.0, disp.y / max(sumA, 0.001)) * 0.45 * fade);
   vH = disp.y / max(sumA, 0.001);
   vec3 wp = vec3(p.x + disp.x, disp.y, p.y + disp.z);
   vWorld = wp;
@@ -126,6 +133,11 @@ export const OCEAN_FRAG = /* glsl */ `
 uniform float uTime;
 uniform vec3 uCam;
 uniform float uFogDensity;
+uniform vec3 uDeep;
+uniform vec3 uShallow;
+uniform vec3 uGlint;
+uniform float uLitK;
+uniform float uReflK;
 varying vec3 vWorld;
 varying vec3 vN;
 varying float vFoam;
@@ -147,7 +159,7 @@ void main(){
   float k0 = fbm(p3); float kx = fbm(p3 + e.xy); float kz = fbm(p3 + e.yx);
   vec2 g3 = vec2(kx - k0, kz - k0) / e.x;
   float fineAtten = 1.0 - smoothstep(25.0, 120.0, vDist);
-  vec3 N = normalize(vN + vec3(-g.x, 0.0, -g.y) * 0.30 * detail + vec3(-g3.x, 0.0, -g3.y) * 0.07 * fineAtten);
+  vec3 N = normalize(vN + vec3(-g.x, 0.0, -g.y) * 0.30 * detail + vec3(-g3.x, 0.0, -g3.y) * 0.045 * fineAtten);
 
   vec3 V = normalize(uCam - vWorld);
   float ndv = max(dot(N, V), 0.0);
@@ -156,23 +168,23 @@ void main(){
   R.y = abs(R.y);
   vec3 refl = skyColor(R);
 
-  vec3 deep = vec3(0.004, 0.022, 0.036);
-  vec3 shallow = vec3(0.03, 0.19, 0.21);
+  vec3 deep = uDeep;
+  vec3 shallow = uShallow;
   float crest = clamp(vH * 0.5 + 0.5, 0.0, 1.0);
   vec3 body = mix(deep, shallow, crest * crest * 1.1 + 0.06);
   body += vec3(0.01, 0.05, 0.05) * smoothstep(0.55, 1.0, crest) * max(dot(vec3(0.0,1.0,0.0), uMoonDir) + 0.3, 0.0);
-  body *= 0.6 + 0.8 * max(dot(N, uMoonDir), 0.0) + uFlash * 1.2;
+  body *= (0.6 + 0.8 * max(dot(N, uMoonDir), 0.0)) * uLitK + uFlash * 1.2;
   // subsurface glow: light shining through thin wave crests toward the viewer
   float sss = pow(max(dot(V, -uMoonDir), 0.0), 3.0) * smoothstep(0.35, 1.0, crest);
   body += vec3(0.03, 0.22, 0.20) * sss * 0.9;
 
-  vec3 col = mix(body, refl, fres);
+  vec3 col = mix(body, refl, fres * uReflK);
   float rd = max(dot(R, uMoonDir), 0.0);
-  float sp = pow(rd, 700.0) * 26.0 + pow(rd, 90.0) * 1.1 + pow(rd, 12.0) * 0.12;
-  col += vec3(0.85, 0.95, 1.0) * sp;
+  float sp = pow(rd, 700.0) * 26.0 + (pow(rd, 90.0) * 1.1 + pow(rd, 12.0) * 0.12) * uReflK * uReflK;
+  col += uGlint * sp;
 
   float nf = fbm(q * 0.9 + vec2(t * 0.1, -t * 0.06));
-  float foam = clamp(vFoam * 1.25, 0.0, 1.0) * smoothstep(0.34, 0.7, nf + 0.25 * vFoam);
+  float foam = clamp(vFoam * 1.25, 0.0, 1.0) * smoothstep(0.5, 0.78, nf + 0.3 * vFoam);
   vec3 foamCol = vec3(0.5, 0.6, 0.63) * (0.16 + 0.55 * max(uMoonDir.y, 0.0) + uFlash * 1.6);
   col = mix(col, foamCol, foam * 0.6);
 

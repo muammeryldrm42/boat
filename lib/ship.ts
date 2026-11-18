@@ -459,6 +459,14 @@ export function createShip(): Ship {
       map: tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.96,
       emissive: new THREE.Color(0.1, 0.1, 0.09), emissiveMap: tex, emissiveIntensity: 0.3,
     }));
+    // light shining through the cloth when the lamp is behind the sail
+    mat.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
+      #if NUM_DIR_LIGHTS > 0
+        float trans = pow(max(-dot(normalize(vViewPosition), directionalLights[0].direction), 0.0), 1.6);
+        reflectedLight.indirectDiffuse += diffuseColor.rgb * directionalLights[0].color * vec3(1.0, 0.86, 0.66) * trans * 0.3;
+      #endif`);
+    };
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;

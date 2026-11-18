@@ -17,8 +17,39 @@ import {
   SKY_VERT, SKY_FRAG, OCEAN_VERT, OCEAN_FRAG, RAIN_VERT, RAIN_FRAG, FINISH_SHADER,
 } from '@/lib/shaders';
 import { makeMistTexture } from '@/lib/textures';
+import { createAudio } from '@/lib/audio';
 
 const MOON_DIR = new THREE.Vector3(-0.78, 0.33, 0.52).normalize();
+
+type Tod = {
+  dir: [number, number, number]; light: number; lightInt: number; fill: number; fillInt: number;
+  hemiSky: number; hemiGnd: number; hemiInt: number; horizon: [number, number, number]; zenith: [number, number, number];
+  disc: [number, number, number]; core: [number, number, number]; stars: number; cloudDark: [number, number, number];
+  cloudLit: [number, number, number]; cover: number; deep: [number, number, number]; shallow: [number, number, number];
+  glint: [number, number, number]; litK: number; reflK: number; env: number; exposure: number; fogMul: number; bloomTh: number; bloomStr: number; mist: number;
+};
+const TODS: Record<string, Tod> = {
+  night: {
+    dir: [-0.78, 0.33, 0.52], light: 0xb4c8f0, lightInt: 3.2, fill: 0xa9c4cc, fillInt: 0.9, hemiSky: 0x3d5870, hemiGnd: 0x0a1214, hemiInt: 1.6,
+    horizon: [0.05, 0.082, 0.1], zenith: [0.006, 0.011, 0.02], disc: [0.28, 0.38, 0.43], core: [7, 6.8, 6.3], stars: 1,
+    cloudDark: [0.01, 0.016, 0.023], cloudLit: [0.16, 0.2, 0.25], cover: 0.3, deep: [0.003, 0.016, 0.028], shallow: [0.02, 0.12, 0.15],
+    glint: [0.85, 0.95, 1], litK: 1, reflK: 1, env: 0.8, exposure: 1.35, fogMul: 1, bloomTh: 0.85, bloomStr: 0.5, mist: 1,
+  },
+  dusk: {
+    dir: [-0.82, 0.17, 0.54], light: 0xffa465, lightInt: 4.6, fill: 0x7a8fb8, fillInt: 0.8, hemiSky: 0x6a7aa0, hemiGnd: 0x1a1412, hemiInt: 1.5,
+    horizon: [0.7, 0.34, 0.18], zenith: [0.035, 0.07, 0.19], disc: [0.95, 0.5, 0.22], core: [45, 24, 9], stars: 0.25,
+    cloudDark: [0.08, 0.07, 0.1], cloudLit: [0.95, 0.46, 0.24], cover: 0.42, deep: [0.01, 0.04, 0.07], shallow: [0.05, 0.2, 0.24],
+    glint: [1, 0.68, 0.38], litK: 0.9, reflK: 0.6, env: 1.0, exposure: 1.0, fogMul: 1.2, bloomTh: 1.0, bloomStr: 0.35, mist: 0.5,
+  },
+  day: {
+    dir: [-0.45, 0.66, 0.45], light: 0xfff1dc, lightInt: 5.6, fill: 0x9cc4e8, fillInt: 1.2, hemiSky: 0x8fb8e8, hemiGnd: 0x2a3a40, hemiInt: 2.3,
+    horizon: [0.48, 0.66, 0.84], zenith: [0.08, 0.24, 0.58], disc: [0.9, 0.75, 0.5], core: [70, 62, 48], stars: 0,
+    cloudDark: [0.5, 0.56, 0.66], cloudLit: [1, 0.98, 0.95], cover: 0.42, deep: [0.008, 0.09, 0.16], shallow: [0.04, 0.34, 0.4],
+    glint: [1, 0.96, 0.85], litK: 1.1, reflK: 0.5, env: 1.0, exposure: 0.9, fogMul: 0.8, bloomTh: 1.4, bloomStr: 0.3, mist: 0.1,
+  },
+};
+const TOD_ORDER = ['night', 'dusk', 'day'];
+
 
 function buildOceanGeometry(rMin: number, rMax: number, rings: number, sectors: number) {
   const pos = new Float32Array((rings + 1) * (sectors + 1) * 3);
@@ -37,7 +68,7 @@ function buildOceanGeometry(rMin: number, rMax: number, rings: number, sectors: 
     for (let j = 0; j < sectors; j++) {
       const a = i * (sectors + 1) + j;
       const b = a + sectors + 1;
-      idx.push(a, b, a + 1, a + 1, b, b + 1);
+      idx.push(a, a + 1, b, a + 1, b + 1, b);
     }
   }
   const g = new THREE.BufferGeometry();
@@ -86,6 +117,7 @@ export default function Scene() {
     const qs = new URLSearchParams(window.location.search);
     const storm = qs.get('storm') === '1';
     const vessel = VESSELS[0];
+    const audio = createAudio();
 
     const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
@@ -124,13 +156,29 @@ export default function Scene() {
     const uCam = { value: new THREE.Vector3() };
     const uCenter = { value: new THREE.Vector2() };
     const uCover = { value: storm ? 1.0 : 0.3 };
+    let todName = TOD_ORDER.includes(qs.get('tod') ?? '') ? (qs.get('tod') as string) : 'night';
+    const t0 = TODS[todName];
+    const col3 = (a: [number, number, number]) => new THREE.Color(a[0], a[1], a[2]);
+    const uHorizon = { value: col3(t0.horizon) };
+    const uZenith = { value: col3(t0.zenith) };
+    const uDisc = { value: col3(t0.disc) };
+    const uDiscCore = { value: col3(t0.core) };
+    const uStars = { value: t0.stars };
+    const uCloudDark = { value: col3(t0.cloudDark) };
+    const uCloudLit = { value: col3(t0.cloudLit) };
+    const uDeep = { value: col3(t0.deep) };
+    const uShallow = { value: col3(t0.shallow) };
+    const uGlint = { value: col3(t0.glint) };
+    const uLitK = { value: t0.litK };
+    const uReflK = { value: t0.reflK };
+    uMoonDir.value.set(...t0.dir).normalize();
     const seaAmp = storm ? 1.3 : 0.85;
 
     // ---- sky ----
     const skyMat = new THREE.ShaderMaterial({
       vertexShader: SKY_VERT,
       fragmentShader: SKY_FRAG,
-      uniforms: { uTime, uFlash, uMoonDir, uCover },
+      uniforms: { uTime, uFlash, uMoonDir, uCover, uHorizon, uZenith, uDisc, uDiscCore, uStars, uCloudDark, uCloudLit },
       side: THREE.BackSide,
       depthWrite: false,
     });
@@ -140,24 +188,26 @@ export default function Scene() {
     scene.add(sky);
 
     // image based lighting from the procedural sky so wood, iron and cloth pick up real reflections
-    {
-      const envScene = new THREE.Scene();
-      const envSky = new THREE.Mesh(sky.geometry, skyMat);
-      envSky.frustumCulled = false;
-      envScene.add(envSky);
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      const envRT = pmrem.fromScene(envScene, 0, 1, 3000);
+    const envScene = new THREE.Scene();
+    const envSky = new THREE.Mesh(sky.geometry, skyMat);
+    envSky.frustumCulled = false;
+    envScene.add(envSky);
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    let envRT: THREE.WebGLRenderTarget | null = null;
+    const rebuildEnv = () => {
+      const prev = envRT;
+      envRT = pmrem.fromScene(envScene, 0, 1, 3000);
       scene.environment = envRT.texture;
-      scene.environmentIntensity = storm ? 0.5 : 0.8;
-      pmrem.dispose();
-    }
+      prev?.dispose();
+    };
+    rebuildEnv();
 
     // ---- ocean ----
     const oceanMat = new THREE.ShaderMaterial({
       vertexShader: OCEAN_VERT,
       fragmentShader: OCEAN_FRAG,
       uniforms: {
-        uTime, uCam, uFlash, uMoonDir, uCenter,
+        uTime, uCam, uFlash, uMoonDir, uCenter, uHorizon, uZenith, uDisc, uDiscCore, uDeep, uShallow, uGlint, uLitK, uReflK,
         uWaves: { value: WAVE_UNIFORMS },
         uAmp: { value: seaAmp },
         uFogDensity: { value: fogDensity },
@@ -172,7 +222,8 @@ export default function Scene() {
     scene.add(islands);
 
     // ---- lights ----
-    const moon = new THREE.DirectionalLight(0xb4c8f0, storm ? 2.6 : 3.2);
+    const todBase = { moon: t0.lightInt, fill: t0.fillInt, hemi: t0.hemiInt, bloomStr: t0.bloomStr, mist: t0.mist };
+    const moon = new THREE.DirectionalLight(t0.light, t0.lightInt);
     moon.castShadow = true;
     moon.shadow.mapSize.set(3072, 3072);
     const sc = moon.shadow.camera;
@@ -181,9 +232,9 @@ export default function Scene() {
     moon.shadow.normalBias = 0.05;
     scene.add(moon);
     scene.add(moon.target);
-    const fill = new THREE.DirectionalLight(0xa9c4cc, 0.9);
+    const fill = new THREE.DirectionalLight(t0.fill, t0.fillInt);
     scene.add(fill);
-    const hemi = new THREE.HemisphereLight(0x3d5870, 0x0a1214, 1.6);
+    const hemi = new THREE.HemisphereLight(t0.hemiSky, t0.hemiGnd, t0.hemiInt);
     scene.add(hemi);
 
     // ---- vessel + crew ----
@@ -308,6 +359,7 @@ export default function Scene() {
         sm.alive = true;
         sm.s.visible = true;
       }
+      audio.boom(c.side * 0.6);
       recoil += c.side * -0.004;
     };
 
@@ -361,11 +413,70 @@ export default function Scene() {
     const finish = new ShaderPass(FINISH_SHADER);
     composer.addPass(finish);
 
+    // ---- time of day blending ----
+    let todSettle = 0;
+    let todSnap = true;
+    const tmpC = new THREE.Color();
+    const tmpV = new THREE.Vector3();
+    const applyTod = (dt: number) => {
+      const T = TODS[todName];
+      const k = todSnap ? 1 : 1 - Math.exp(-dt * 1.3);
+      const lc = (u: { value: THREE.Color }, a: [number, number, number]) => u.value.lerp(tmpC.setRGB(a[0], a[1], a[2]), k);
+      lc(uHorizon, T.horizon); lc(uZenith, T.zenith); lc(uDisc, T.disc); lc(uDiscCore, T.core);
+      lc(uCloudDark, T.cloudDark); lc(uCloudLit, T.cloudLit); lc(uDeep, T.deep); lc(uShallow, T.shallow); lc(uGlint, T.glint);
+      uStars.value += (T.stars - uStars.value) * k;
+      uLitK.value += (T.litK - uLitK.value) * k;
+      uReflK.value += (T.reflK - uReflK.value) * k;
+      if (!storm) uCover.value += (T.cover - uCover.value) * k;
+      uMoonDir.value.lerp(tmpV.set(...T.dir).normalize(), k).normalize();
+      moon.color.lerp(tmpC.setHex(T.light), k);
+      fill.color.lerp(tmpC.setHex(T.fill), k);
+      hemi.color.lerp(tmpC.setHex(T.hemiSky), k);
+      hemi.groundColor.lerp(tmpC.setHex(T.hemiGnd), k);
+      todBase.moon += (T.lightInt - todBase.moon) * k;
+      todBase.fill += (T.fillInt - todBase.fill) * k;
+      todBase.hemi += (T.hemiInt - todBase.hemi) * k;
+      todBase.bloomStr += (T.bloomStr - todBase.bloomStr) * k;
+      todBase.mist += (T.mist - todBase.mist) * k;
+      renderer.toneMappingExposure += (T.exposure - renderer.toneMappingExposure) * k;
+      bloom.threshold += (T.bloomTh - bloom.threshold) * k;
+      scene.environmentIntensity += ((storm ? 0.5 : T.env) - scene.environmentIntensity) * k;
+      const fd = fogDensity * T.fogMul;
+      (scene.fog as THREE.FogExp2).density = fd;
+      oceanMat.uniforms.uFogDensity.value = fd;
+      (scene.fog as THREE.FogExp2).color.copy(uHorizon.value).multiplyScalar(0.9);
+      if (todSettle > 0) {
+        todSettle -= dt;
+        if (todSettle <= 0) rebuildEnv();
+      }
+      todSnap = false;
+    };
+    const cycleTod = () => {
+      todName = TOD_ORDER[(TOD_ORDER.indexOf(todName) + 1) % TOD_ORDER.length];
+      todSettle = 3.2;
+      const el = document.getElementById('hud-tod');
+      if (el) el.textContent = todName.toUpperCase();
+    };
+
+    { const el0 = document.getElementById('hud-tod'); if (el0) el0.textContent = todName.toUpperCase(); }
+
     // ---- input ----
     const keyMap: Record<string, keyof typeof controlInput> = {
       KeyW: 'sailUp', ArrowUp: 'sailUp', KeyS: 'sailDown', ArrowDown: 'sailDown',
       KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', KeyQ: 'fireLeft', KeyE: 'fireRight',
     };
+    const keyTod = (e: KeyboardEvent) => {
+      audio.start();
+      if (e.code === 'KeyT' && !e.repeat) cycleTod();
+      if (e.code === 'KeyM' && !e.repeat) {
+        const m = audio.toggleMute();
+        const el = document.getElementById('hud-snd');
+        if (el) el.textContent = m ? 'OFF' : 'ON';
+      }
+    };
+    const startAudio = () => audio.start();
+    window.addEventListener('keydown', keyTod);
+    window.addEventListener('pointerdown', startAudio);
     const onKey = (down: boolean) => (e: KeyboardEvent) => {
       const k = keyMap[e.code];
       if (k) {
@@ -488,6 +599,10 @@ export default function Scene() {
         for (const side of [-1, 1]) {
           worldPt(side * 3.0, vessel.sternZ + 3, wp);
           spawnWake(wp.x, wp.z, 1.8 + sailing.speed * 0.2, t);
+          if (sailing.speed > 5) {
+            worldPt(side * 2.6, 13.5, wp);
+            spawnWake(wp.x, wp.z, 1.4 + sailing.speed * 0.12, t);
+          }
         }
       }
       for (const w of wake) {
@@ -629,13 +744,16 @@ export default function Scene() {
         if (flash < 0.002) flash = 0;
       }
       uFlash.value = flash;
-      moon.position.set(sailing.x, 0, sailing.z).addScaledVector(MOON_DIR, 70);
+      applyTod(dt);
+      audio.update(dt, { speed: sailing.speed, heel: roll, storm });
+      moon.position.set(sailing.x, 0, sailing.z).addScaledVector(uMoonDir.value, 70);
       moon.target.position.set(sailing.x, 4, sailing.z);
-      moon.intensity = (storm ? 2.6 : 3.2) + flash * 7;
+      moon.intensity = (storm ? todBase.moon * 0.8 : todBase.moon) + flash * 7;
       fill.position.set(sailing.x - 24, 16, sailing.z - 30);
       fill.target.position.set(sailing.x, 6, sailing.z);
-      hemi.intensity = 1.6 + flash * 3.5;
-      bloom.strength = 0.5 + flash * 0.5;
+      hemi.intensity = todBase.hemi + flash * 3.5;
+      fill.intensity = todBase.fill;
+      bloom.strength = todBase.bloomStr + flash * 0.5;
       const spN = Math.min(1, sailing.speed / 24);
       finish.uniforms.uSpeed.value += (spN * spN - finish.uniforms.uSpeed.value) * Math.min(1, dt * 2);
       const fovT = 48 + spN * 9;
@@ -644,7 +762,7 @@ export default function Scene() {
       for (const m of mist) {
         m.a += m.sp * dt;
         m.s.position.set(sailing.x + Math.cos(m.a) * m.r, 2.0 + m.h + Math.sin(t * 0.3 + m.r) * 0.5, sailing.z + Math.sin(m.a) * m.r);
-        (m.s.material as THREE.SpriteMaterial).opacity = (0.035 + 0.02 * Math.sin(t * 0.4 + m.r)) * (1 + flash * 2.5);
+        (m.s.material as THREE.SpriteMaterial).opacity = (0.035 + 0.02 * Math.sin(t * 0.4 + m.r)) * (1 + flash * 2.5) * todBase.mist;
       }
 
       // hud at ~6 Hz
@@ -699,6 +817,10 @@ export default function Scene() {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', kd);
+      window.removeEventListener('keydown', keyTod);
+      window.removeEventListener('pointerdown', startAudio);
+      audio.dispose();
+      pmrem.dispose();
       window.removeEventListener('keyup', ku);
       controls.dispose();
       ship.dispose();
