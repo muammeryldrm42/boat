@@ -1,0 +1,9 @@
+html, body { margin: 0; padding: 0; height: 100%; background: #02060a; overflow: hidden; }
+canvas { display: block; }
+.hud {
+  position: fixed; left: 22px; bottom: 18px; z-index: 5; pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: rgba(150, 215, 205, 0.75);
+  font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+  text-shadow: 0 0 12px rgba(40, 200, 180, 0.5);
+}
+.hud b { display: block; font-size: 15px; letter-spacing: 0.3em; color: rgba(190, 240, 230, 0.95); margin-bottom: 4px; }
