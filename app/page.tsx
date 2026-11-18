@@ -8,7 +8,9 @@ const Scene = dynamic(() => import('@/components/Scene'), { ssr: false });
 type Key = keyof typeof controlInput;
 
 function PadButton({ k, label }: { k: Key; label: string }) {
+  const fire = k === 'fireLeft' || k === 'fireRight';
   const set = (v: boolean) => () => {
+    if (fire && !v) return;
     controlInput[k] = v;
   };
   return (
@@ -36,7 +38,7 @@ export default function Page() {
         <div className="row"><span>Heading</span><em><i id="hud-heading">000</i>&deg;</em></div>
         <div className="row"><span>Sail</span><em id="hud-sail">0%</em></div>
         <div className="row"><span>Wind</span><em id="hud-wind">-</em></div>
-        <p>W / S sail &nbsp; A / D rudder &nbsp; drag to look</p>
+        <p>W / S sail &nbsp; A / D rudder &nbsp; Q / E broadside &nbsp; drag to look</p>
       </div>
       <div className="compass" aria-hidden>
         <div className="compass-ring">
@@ -48,6 +50,7 @@ export default function Page() {
       <div className="pads">
         <div className="pad-col"><PadButton k="sailUp" label="+" /><PadButton k="sailDown" label="-" /></div>
         <div className="pad-col"><PadButton k="left" label="<" /><PadButton k="right" label=">" /></div>
+        <div className="pad-col"><PadButton k="fireLeft" label="Q" /><PadButton k="fireRight" label="E" /></div>
       </div>
     </main>
   );

@@ -46,6 +46,10 @@ function buildOceanGeometry(rMin: number, rMax: number, rings: number, sectors: 
   return g;
 }
 
+const ISLANDS: [number, number, number][] = [
+  [220, 520, 70], [-380, 330, 95], [-120, -640, 120], [560, -180, 85], [-560, -420, 110], [90, 900, 150],
+];
+
 // Low, dark island silhouettes far out so there is something to sail past.
 function buildIslands(): THREE.Group {
   const grp = new THREE.Group();
@@ -54,10 +58,7 @@ function buildIslands(): THREE.Group {
     const x = Math.sin(s * 127.1 + 311.7) * 43758.5453;
     return x - Math.floor(x);
   };
-  const spots: [number, number, number][] = [
-    [220, 520, 70], [-380, 330, 95], [-120, -640, 120], [560, -180, 85], [-560, -420, 110], [90, 900, 150],
-  ];
-  spots.forEach(([x, z, r], i) => {
+  ISLANDS.forEach(([x, z, r], i) => {
     const g = new THREE.ConeGeometry(r, r * 0.55, 24, 8, false);
     const p = g.getAttribute('position') as THREE.BufferAttribute;
     for (let v = 0; v < p.count; v++) {
@@ -224,6 +225,79 @@ export default function Scene() {
     let sprayCursor = 0;
     let sprayAcc = 0;
 
+    // ---- broadside cannons ----
+    const ballGeo = new THREE.SphereGeometry(0.18, 8, 8);
+    const ballMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.8 });
+    const balls: { m: THREE.Mesh; v: THREE.Vector3; alive: boolean }[] = [];
+    for (let i = 0; i < 24; i++) {
+      const m = new THREE.Mesh(ballGeo, ballMat);
+      m.visible = false;
+      scene.add(m);
+      balls.push({ m, v: new THREE.Vector3(), alive: false });
+    }
+    const SMOKE_N = 60;
+    const smoke: { s: THREE.Sprite; v: THREE.Vector3; age: number; life: number; alive: boolean }[] = [];
+    for (let i = 0; i < SMOKE_N; i++) {
+      const m = new THREE.SpriteMaterial({ map: mistTex, color: new THREE.Color(0.55, 0.55, 0.55), transparent: true, depthWrite: false, opacity: 0 });
+      const sp = new THREE.Sprite(m);
+      sp.visible = false;
+      scene.add(sp);
+      smoke.push({ s: sp, v: new THREE.Vector3(), age: 0, life: 1, alive: false });
+    }
+    const flashMat = new THREE.SpriteMaterial({ map: mistTex, color: new THREE.Color(3.0, 1.6, 0.6), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const flashes: { s: THREE.Sprite; age: number; alive: boolean }[] = [];
+    for (let i = 0; i < 16; i++) {
+      const sp = new THREE.Sprite(flashMat.clone());
+      sp.visible = false;
+      scene.add(sp);
+      flashes.push({ s: sp, age: 0, alive: false });
+    }
+    const fireLight = new THREE.PointLight(0xffa04a, 0, 60, 1.6);
+    scene.add(fireLight);
+    let fireLightT = 0;
+    let smokeCursor = 0;
+    let flashCursor = 0;
+    let ballCursor = 0;
+    let reloadL = 0;
+    let reloadR = 0;
+    let recoil = 0;
+    const queue: { at: number; idx: number }[] = [];
+    const worldQ = new THREE.Quaternion();
+    const fireOne = (idx: number) => {
+      const c = vessel.cannons[idx];
+      const wpos = ship.group.localToWorld(c.pos.clone());
+      ship.group.getWorldQuaternion(worldQ);
+      const dir = c.dir.clone().applyQuaternion(worldQ);
+      dir.y += 0.1;
+      dir.normalize();
+      const b = balls[ballCursor];
+      ballCursor = (ballCursor + 1) % balls.length;
+      b.m.position.copy(wpos);
+      const fwd = new THREE.Vector3(Math.sin(sailing.heading), 0, Math.cos(sailing.heading)).multiplyScalar(sailing.speed);
+      b.v.copy(dir).multiplyScalar(58).add(fwd);
+      b.alive = true;
+      b.m.visible = true;
+      const f = flashes[flashCursor];
+      flashCursor = (flashCursor + 1) % flashes.length;
+      f.s.position.copy(wpos);
+      f.age = 0;
+      f.alive = true;
+      f.s.visible = true;
+      fireLight.position.copy(wpos);
+      fireLightT = 0.18;
+      for (let i = 0; i < 4; i++) {
+        const sm = smoke[smokeCursor];
+        smokeCursor = (smokeCursor + 1) % SMOKE_N;
+        sm.s.position.copy(wpos).addScaledVector(dir, 0.5 + i * 0.4);
+        sm.v.copy(dir).multiplyScalar(2 + Math.random() * 2).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.8 + Math.random(), (Math.random() - 0.5) * 1.2));
+        sm.age = 0;
+        sm.life = 3.5 + Math.random() * 2;
+        sm.alive = true;
+        sm.s.visible = true;
+      }
+      recoil += c.side * -0.004;
+    };
+
     // ---- mist (very light) ----
     const mist: { s: THREE.Sprite; a: number; r: number; h: number; sp: number }[] = [];
     for (let i = 0; i < 14; i++) {
@@ -277,11 +351,12 @@ export default function Scene() {
     // ---- input ----
     const keyMap: Record<string, keyof typeof controlInput> = {
       KeyW: 'sailUp', ArrowUp: 'sailUp', KeyS: 'sailDown', ArrowDown: 'sailDown',
-      KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
+      KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', KeyQ: 'fireLeft', KeyE: 'fireRight',
     };
     const onKey = (down: boolean) => (e: KeyboardEvent) => {
       const k = keyMap[e.code];
       if (k) {
+        if ((k === 'fireLeft' || k === 'fireRight') && !down) return;
         controlInput[k] = down;
         e.preventDefault();
       }
@@ -301,6 +376,10 @@ export default function Scene() {
       ship: document.getElementById('hud-ship-arrow'),
     };
     let hudTimer = 0;
+    let pr = Math.min(window.devicePixelRatio, 2);
+    const prMax = pr;
+    let frames = 0;
+    let frameAcc = 0;
 
     // ---- lightning (storm only) ----
     let nextBolt = 3 + Math.random() * 4;
@@ -339,6 +418,17 @@ export default function Scene() {
       uTime.value = t;
 
       sailing.step(dt, t, controlInput, vessel.physics);
+      for (const [ix, iz, ir] of ISLANDS) {
+        const dx = sailing.x - ix;
+        const dz = sailing.z - iz;
+        const d = Math.hypot(dx, dz);
+        const lim = ir * 0.95 + 14;
+        if (d < lim) {
+          sailing.x = ix + (dx / d) * lim;
+          sailing.z = iz + (dz / d) * lim;
+          sailing.speed *= Math.exp(-dt * 3);
+        }
+      }
 
       // wave-driven attitude in ship-local axes
       const hb = hAt(0, sample.z, t);
@@ -399,6 +489,77 @@ export default function Scene() {
         const sz = w.size * (1 + f * 2.6);
         w.m.scale.set(sz, 1, sz);
         (w.m.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - f) * Math.min(1, f * 8) * (0.4 + 0.6 * Math.min(1, sailing.speed / 3));
+      }
+
+      // broadsides (Q = left/+x side, E = right/-x side)
+      reloadL -= dt;
+      reloadR -= dt;
+      const wantL = controlInput.fireLeft;
+      const wantR = controlInput.fireRight;
+      controlInput.fireLeft = false;
+      controlInput.fireRight = false;
+      if (wantL && reloadL <= 0) {
+        reloadL = 5;
+        vessel.cannons.forEach((c, i) => { if (c.side > 0) queue.push({ at: t + (i % 8) * 0.14 + Math.random() * 0.08, idx: i }); });
+      }
+      if (wantR && reloadR <= 0) {
+        reloadR = 5;
+        vessel.cannons.forEach((c, i) => { if (c.side < 0) queue.push({ at: t + (i % 8) * 0.14 + Math.random() * 0.08, idx: i }); });
+      }
+      for (let qi = queue.length - 1; qi >= 0; qi--) {
+        if (queue[qi].at <= t) {
+          fireOne(queue[qi].idx);
+          queue.splice(qi, 1);
+        }
+      }
+      recoil *= Math.exp(-dt * 4);
+      roll += recoil;
+      fireLightT = Math.max(0, fireLightT - dt);
+      fireLight.intensity = fireLightT > 0 ? 260 * (fireLightT / 0.18) : 0;
+      for (const b of balls) {
+        if (!b.alive) continue;
+        b.v.y -= 9.8 * dt;
+        b.m.position.addScaledVector(b.v, dt);
+        const wh = waveHeight(b.m.position.x, b.m.position.z, t, seaAmp);
+        if (b.m.position.y < wh) {
+          b.alive = false;
+          b.m.visible = false;
+          for (let i = 0; i < 10; i++) {
+            const sp = spray[sprayCursor];
+            sprayCursor = (sprayCursor + 1) % SPRAY_N;
+            sp.s.position.set(b.m.position.x, wh + 0.2, b.m.position.z);
+            sp.v.set((Math.random() - 0.5) * 5, 4 + Math.random() * 6, (Math.random() - 0.5) * 5);
+            sp.age = 0;
+            sp.life = 0.9 + Math.random() * 0.7;
+            sp.alive = true;
+            sp.s.visible = true;
+          }
+        }
+      }
+      for (const f of flashes) {
+        if (!f.alive) continue;
+        f.age += dt;
+        if (f.age > 0.16) {
+          f.alive = false;
+          f.s.visible = false;
+          continue;
+        }
+        f.s.scale.setScalar(2.4 + f.age * 14);
+        (f.s.material as THREE.SpriteMaterial).opacity = 1 - f.age / 0.16;
+      }
+      for (const sm of smoke) {
+        if (!sm.alive) continue;
+        sm.age += dt;
+        if (sm.age >= sm.life) {
+          sm.alive = false;
+          sm.s.visible = false;
+          continue;
+        }
+        sm.s.position.addScaledVector(sm.v, dt);
+        sm.v.multiplyScalar(Math.exp(-dt * 0.9));
+        const f = sm.age / sm.life;
+        sm.s.scale.setScalar(1.6 + f * 6);
+        (sm.s.material as THREE.SpriteMaterial).opacity = 0.34 * (1 - f) * Math.min(1, sm.age * 6);
       }
 
       // bow spray: more of it the faster we go and the harder the bow digs in
@@ -484,6 +645,23 @@ export default function Scene() {
         if (hud.ship) hud.ship.style.transform = `rotate(0deg)`;
       }
 
+      frames++;
+      frameAcc += dt;
+      if (frameAcc > 2.5) {
+        const fps = frames / frameAcc;
+        frames = 0;
+        frameAcc = 0;
+        let next = pr;
+        if (fps < 38 && pr > 0.6) next = Math.max(0.6, pr - 0.2);
+        else if (fps > 58 && pr < prMax) next = Math.min(prMax, pr + 0.1);
+        if (next !== pr) {
+          pr = next;
+          renderer.setPixelRatio(pr);
+          composer.setPixelRatio(pr);
+          composer.setSize(mount.clientWidth, mount.clientHeight);
+        }
+      }
+
       finish.uniforms.uTime.value = t;
       controls.update();
       composer.render();
@@ -516,6 +694,11 @@ export default function Scene() {
       wakeGeo.dispose();
       wake.forEach((w) => (w.m.material as THREE.Material).dispose());
       spray.forEach((sp) => (sp.s.material as THREE.SpriteMaterial).dispose());
+      smoke.forEach((sm) => (sm.s.material as THREE.SpriteMaterial).dispose());
+      flashes.forEach((f) => (f.s.material as THREE.SpriteMaterial).dispose());
+      flashMat.dispose();
+      ballGeo.dispose();
+      ballMat.dispose();
       mistTex.dispose();
       mist.forEach((m) => (m.s.material as THREE.SpriteMaterial).dispose());
       composer.dispose();

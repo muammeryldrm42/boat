@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { createShip, mastDefs, railX, railY, type Ship } from './ship';
 import type { CrewSpawn } from './crew';
 import type { VesselPhysics } from './sailing';
-import { L } from './hull';
+import { L, sectionV, hullNormal } from './hull';
 
 // Registry of drivable vessels. Add a new ship by writing a builder (like createShip),
 // a crew layout, and a physics profile, then push a VesselSpec into VESSELS.
@@ -14,6 +14,7 @@ export interface VesselSpec {
   physics: VesselPhysics;
   sternZ: number; // local z of the stern, used for the wake
   waveSample: { x: number; z: number }; // local sample offsets for pitch/roll from waves
+  cannons: { side: number; pos: THREE.Vector3; dir: THREE.Vector3 }[]; // local space, side +1 = +x
   restHeight: number; // world y of the ship origin at rest (waterline offset)
   camera: { offset: THREE.Vector3; targetY: number; minDistance: number; maxDistance: number };
 }
@@ -91,6 +92,18 @@ function galleonCrew(): CrewSpawn[] {
   ];
 }
 
+function galleonCannons() {
+  const out: { side: number; pos: THREE.Vector3; dir: THREE.Vector3 }[] = [];
+  for (const side of [1, -1]) {
+    for (const u of [0.31, 0.38, 0.45, 0.52, 0.59, 0.66, 0.73, 0.8]) {
+      const p = sectionV(u, 0.6);
+      const n = hullNormal(u, 0.6, side);
+      out.push({ side, pos: new THREE.Vector3(side * p.x, p.y, p.z).addScaledVector(n, 1.4), dir: n.clone() });
+    }
+  }
+  return out;
+}
+
 export const GALLEON: VesselSpec = {
   id: 'galleon',
   name: 'Galleon',
@@ -99,6 +112,7 @@ export const GALLEON: VesselSpec = {
   physics: { maxSpeed: 15, accel: 0.45, turnRate: 0.3, rudderRate: 0.8, sailRate: 0.35 },
   sternZ: -L / 2,
   waveSample: { x: 3.6, z: 13 },
+  cannons: galleonCannons(),
   restHeight: 2.55,
   camera: { offset: new THREE.Vector3(-30, 12, -42), targetY: 7, minDistance: 8, maxDistance: 130 },
 };

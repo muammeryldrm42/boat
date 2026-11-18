@@ -4,4 +4,6 @@ export const controlInput = {
   sailDown: false,
   left: false,
   right: false,
+  fireLeft: false,
+  fireRight: false,
 };
