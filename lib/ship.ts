@@ -10,6 +10,7 @@ const V3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
 export interface SailRuntime {
   geo: THREE.BufferGeometry;
   base: Float32Array;
+  top: Float32Array;
   st: Float32Array;
   dir: THREE.Vector3;
   amp: number;
@@ -26,11 +27,31 @@ export interface LanternRuntime {
   phase: number;
 }
 
+export interface ShipState {
+  sail: number; // 0..1 canvas set
+  drive: number; // 0..1 how well the wind fills the sails
+  rudder: number; // -1..1
+  speed: number; // m/s
+}
+
 export interface Ship {
   group: THREE.Group;
-  update: (t: number, dt: number) => void;
+  update: (t: number, dt: number, state: ShipState) => void;
   dispose: () => void;
 }
+
+const TATTER_SCALE = 0.3;
+
+export const mastDefs = [
+  { name: 'fore', z: 8.4, base: 0, lower: 17, top: 10.2, r: 0.46 },
+  { name: 'main', z: -0.6, base: 0, lower: 20.5, top: 12, r: 0.56 },
+  { name: 'mizzen', z: -9.6, base: 1.7, lower: 13.5, top: 8.5, r: 0.38 },
+];
+export const railX = (z: number) => {
+  const u = z / L + 0.5;
+  return sectionV(u, 0.985).x + 0.05;
+};
+export const railY = (z: number) => topY(z / L + 0.5);
 
 export function createShip(): Ship {
   const group = new THREE.Group();
@@ -259,7 +280,7 @@ export function createShip(): Ship {
   const lidGeo = track(new THREE.BoxGeometry(1.0, 0.1, 0.06));
   const cannonGeo = track(new THREE.CylinderGeometry(0.15, 0.24, 1.7, 10));
   const cannonTipGeo = track(new THREE.TorusGeometry(0.17, 0.045, 6, 12));
-  const ghostPortMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.04, 0.5, 0.52) }));
+  const ghostPortMat = track(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.012, 0.012, 0.012) }));
   const portUs = [0.31, 0.38, 0.45, 0.52, 0.59, 0.66, 0.73, 0.8];
   for (const side of [-1, 1]) {
     portUs.forEach((u, idx) => {
@@ -297,16 +318,6 @@ export function createShip(): Ship {
   }
 
   // chain plates (channels) along the rails by the masts
-  const mastDefs = [
-    { name: 'fore', z: 8.4, base: 0, lower: 17, top: 10.2, r: 0.46 },
-    { name: 'main', z: -0.6, base: 0, lower: 20.5, top: 12, r: 0.56 },
-    { name: 'mizzen', z: -9.6, base: 1.7, lower: 13.5, top: 8.5, r: 0.38 },
-  ];
-  const railX = (z: number) => {
-    const u = z / L + 0.5;
-    return sectionV(u, 0.985).x + 0.05;
-  };
-  const railY = (z: number) => topY(z / L + 0.5);
   for (const m of mastDefs) {
     for (const side of [-1, 1]) {
       const ch = shadowed(new THREE.Mesh(track(new THREE.BoxGeometry(0.7, 0.13, 4.6)), trimMat));
@@ -412,16 +423,26 @@ export function createShip(): Ship {
         idx.push(a, a + 1, a + nu + 1, a + 1, a + nu + 2, a + nu + 1);
       }
     }
+    const topArr = new Float32Array((nu + 1) * (nv + 1) * 3);
+    for (let j = 0; j <= nv; j++) {
+      for (let i = 0; i <= nu; i++) {
+        const k0 = (j * (nu + 1) + i) * 3;
+        const k1 = i * 3;
+        topArr[k0] = pos[k1];
+        topArr[k0 + 1] = pos[k1 + 1];
+        topArr[k0 + 2] = pos[k1 + 2];
+      }
+    }
     const geo = track(new THREE.BufferGeometry());
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
     geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     geo.setIndex(idx);
-    const tex = makeSailTexture(texOpts);
+    const tex = makeSailTexture({ ...texOpts, tatter: texOpts.tatter * TATTER_SCALE });
     track(tex);
     sailTexAll.push(tex);
     const mat = track(new THREE.MeshStandardMaterial({
       map: tex, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.96,
-      emissive: new THREE.Color(0.1, 0.17, 0.17), emissiveMap: tex, emissiveIntensity: 0.28,
+      emissive: new THREE.Color(0.1, 0.1, 0.09), emissiveMap: tex, emissiveIntensity: 0.3,
     }));
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = true;
@@ -429,7 +450,7 @@ export function createShip(): Ship {
     mesh.frustumCulled = false;
     group.add(mesh);
     sailMeshes.push(mesh);
-    sails.push({ geo, base: pos, st, dir: dir.clone(), amp, phase, flutter, sway });
+    sails.push({ geo, base: pos, top: topArr, st, dir: dir.clone(), amp, phase, flutter, sway });
     geo.computeVertexNormals();
   };
 
@@ -579,9 +600,10 @@ export function createShip(): Ship {
     }
   }
   // ship wheel and binnacle
+  let wheelRef: THREE.Group | null = null;
   {
     const ped = shadowed(new THREE.Mesh(track(new THREE.BoxGeometry(1.2, 1.1, 0.9)), trimMat));
-    ped.position.set(0, 1.7 + 0.55, -13.0);
+    ped.position.set(0, 1.7 + 0.55, -11.95);
     group.add(ped);
     const wheel = new THREE.Group();
     const torus = shadowed(new THREE.Mesh(track(new THREE.TorusGeometry(0.62, 0.06, 8, 24)), darkWood));
@@ -598,8 +620,9 @@ export function createShip(): Ship {
     const hub = shadowed(new THREE.Mesh(track(new THREE.CylinderGeometry(0.14, 0.14, 0.2, 10)), ironMat));
     hub.rotation.x = Math.PI / 2;
     wheel.add(hub);
-    wheel.position.set(0, 1.7 + 1.55, -12.55);
+    wheel.position.set(0, 1.7 + 1.55, -12.75);
     group.add(wheel);
+    wheelRef = wheel;
   }
   // rope coils at mast feet
   const coilGeo = track(new THREE.TorusGeometry(0.4, 0.09, 6, 14));
@@ -611,12 +634,15 @@ export function createShip(): Ship {
       group.add(c);
     }
   }
-  // rudder
+  // rudder (pivots at the transom)
+  const rudderPivot = new THREE.Group();
+  rudderPivot.position.set(0, -3.4, -L / 2 - 0.05);
   {
     const rud = shadowed(new THREE.Mesh(track(new THREE.BoxGeometry(0.26, 3.4, 1.3)), darkWood));
-    rud.position.set(0, -3.4, -L / 2 - 0.7);
-    group.add(rud);
+    rud.position.set(0, 0, -0.65);
+    rudderPivot.add(rud);
   }
+  group.add(rudderPivot);
   // beakhead rail and stern lantern posts
   for (const side of [-1, 1]) {
     const post = shadowed(new THREE.Mesh(track(new THREE.CylinderGeometry(0.1, 0.13, 2.6, 8)), darkWood));
@@ -629,7 +655,7 @@ export function createShip(): Ship {
   const coreGeo = track(new THREE.SphereGeometry(0.2, 12, 12));
   const cageGeo = track(new THREE.CylinderGeometry(0.34, 0.28, 0.7, 6, 1, true));
   const glowMat = track(new THREE.SpriteMaterial({
-    map: glowTex, color: new THREE.Color(0.2, 1.0, 0.9), transparent: true, depthWrite: false,
+    map: glowTex, color: new THREE.Color(1.0, 0.7, 0.35), transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending, opacity: 0.4,
   }));
   const addLantern = (pos: THREE.Vector3, color: THREE.Color, withLight: boolean, intensity: number, scale = 3.2, hang = true) => {
@@ -662,11 +688,11 @@ export function createShip(): Ship {
     group.add(g);
     lanterns.push({ light, core, glow, baseIntensity: intensity, phase: Math.random() * 10 });
   };
-  const teal = new THREE.Color(0.25, 1.0, 0.85);
+  const teal = new THREE.Color(1.0, 0.62, 0.26);
   addLantern(V3(-3.5, 6.0, -L / 2 + 0.2), teal, true, 18);
   addLantern(V3(3.5, 6.0, -L / 2 + 0.2), teal, false, 0);
-  addLantern(V3(0, 7.0, main.z + 0.2 + 0.0).setZ(main.z + 1.4), new THREE.Color(0.35, 1.0, 0.9), true, 22, 2.2);
-  addLantern(V3(0, main.base + main.lower + main.top + 0.1, main.z), new THREE.Color(0.35, 1.0, 0.9), false, 0, 4.0, false);
+  addLantern(V3(0, 7.0, main.z + 0.2 + 0.0).setZ(main.z + 1.4), new THREE.Color(1.0, 0.66, 0.3), true, 22, 2.2);
+  addLantern(V3(0, main.base + main.lower + main.top + 0.1, main.z), new THREE.Color(1.0, 0.66, 0.3), false, 0, 3.0, false);
   addLantern(V3(0, 2.3, 17.2), teal, true, 16);
   addLantern(V3(-2.4, 1.7 + 2.2, -11.2), new THREE.Color(1.0, 0.62, 0.25), false, 0, 2.2);
   addLantern(V3(2.4, 1.7 + 2.2, -11.2), new THREE.Color(1.0, 0.62, 0.25), false, 0, 2.2);
@@ -712,26 +738,34 @@ export function createShip(): Ship {
 
   // ---------- animation ----------
   const tmp = new THREE.Vector3();
-  const update = (t: number, dt: number) => {
+  const update = (t: number, dt: number, st: ShipState) => {
+    const sc = 0.14 + 0.86 * st.sail;
+    const power = (0.3 + 0.7 * st.sail) * (0.3 + 0.7 * st.drive);
+    const flutterK = 1 + (1 - st.drive) * st.sail * 2.2;
     for (const s of sails) {
       const pos = s.geo.getAttribute('position') as THREE.BufferAttribute;
       const arr = pos.array as Float32Array;
-      const gust = 1 + 0.12 * Math.sin(t * 0.6 + s.phase) + 0.05 * Math.sin(t * 1.9 + s.phase * 2);
+      const gust = 1 + 0.1 * Math.sin(t * 0.6 + s.phase) + 0.04 * Math.sin(t * 1.9 + s.phase * 2);
       const n = arr.length / 3;
       for (let k = 0; k < n; k++) {
         const sx = s.st[k * 2];
         const tt = s.st[k * 2 + 1];
-        const bulge = s.amp * Math.pow(Math.sin(Math.PI * sx), 0.7) * (0.3 + 0.7 * Math.sin(Math.PI * (0.08 + 0.84 * tt)));
-        const fl = s.flutter * (0.15 + tt * tt) * Math.sin(t * 2.3 + sx * 6 + tt * 4 + s.phase);
+        const bulge = s.amp * power * Math.pow(Math.sin(Math.PI * sx), 0.7) * (0.3 + 0.7 * Math.sin(Math.PI * (0.08 + 0.84 * tt)));
+        const fl = s.flutter * flutterK * (0.15 + tt * tt) * Math.sin(t * 2.3 + sx * 6 + tt * 4 + s.phase);
         const off = bulge * gust + fl;
-        tmp.set(0, 0, 0).addScaledVector(s.dir, off);
-        arr[k * 3] = s.base[k * 3] + tmp.x + Math.sin(t * 1.7 + tt * 3 + s.phase) * s.sway * tt;
-        arr[k * 3 + 1] = s.base[k * 3 + 1] + tmp.y + Math.sin(t * 2.1 + sx * 4 + s.phase) * 0.05 * tt;
-        arr[k * 3 + 2] = s.base[k * 3 + 2] + tmp.z;
+        const i3 = k * 3;
+        const bx = s.top[i3] + (s.base[i3] - s.top[i3]) * sc;
+        const by = s.top[i3 + 1] + (s.base[i3 + 1] - s.top[i3 + 1]) * sc;
+        const bz = s.top[i3 + 2] + (s.base[i3 + 2] - s.top[i3 + 2]) * sc;
+        arr[i3] = bx + s.dir.x * off + Math.sin(t * 1.7 + tt * 3 + s.phase) * s.sway * tt;
+        arr[i3 + 1] = by + s.dir.y * off + Math.sin(t * 2.1 + sx * 4 + s.phase) * 0.05 * tt;
+        arr[i3 + 2] = bz + s.dir.z * off;
       }
       pos.needsUpdate = true;
       s.geo.computeVertexNormals();
     }
+    rudderPivot.rotation.y = st.rudder * 0.55;
+    if (wheelRef) wheelRef.rotation.z = -st.rudder * 2.6;
     for (const l of lanterns) {
       const f = 0.82 + 0.18 * Math.sin(t * 5.3 + l.phase) * Math.sin(t * 2.1 + l.phase * 1.7) + 0.06 * Math.sin(t * 13 + l.phase);
       if (l.light) l.light.intensity = l.baseIntensity * f;

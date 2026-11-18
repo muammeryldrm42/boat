@@ -113,7 +113,7 @@ export function makeSailTexture(o: SailOpts) {
   const r = rng(o.seed);
   const c = canvas(W, H);
   const g = c.getContext('2d')!;
-  g.fillStyle = 'rgb(196,188,166)';
+  g.fillStyle = 'rgb(214,205,180)';
   g.fillRect(0, 0, W, H);
   for (let y = 0; y < H; y += 3) {
     g.fillStyle = `rgba(0,0,0,${0.03 + r() * 0.05})`;
@@ -144,7 +144,7 @@ export function makeSailTexture(o: SailOpts) {
     const br = 20 + r() * 90;
     const rg = g.createRadialGradient(bx, by, 0, bx, by, br);
     const kind = r();
-    const col = kind < 0.6 ? '70,58,40' : kind < 0.82 ? '52,84,78' : '24,22,18';
+    const col = kind < 0.7 ? '84,70,48' : kind < 0.85 ? '66,82,72' : '34,30,24';
     rg.addColorStop(0, `rgba(${col},${0.08 + r() * 0.18})`);
     rg.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = rg;
