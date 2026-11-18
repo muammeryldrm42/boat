@@ -143,7 +143,11 @@ void main(){
   vec2 p2 = q * 2.6 - vec2(t * 0.55, t * 0.21);
   float g0 = fbm(p2); float gx = fbm(p2 + e.xy); float gz = fbm(p2 + e.yx);
   vec2 g = (vec2(hx - h0, hz - h0) * 1.0 + vec2(gx - g0, gz - g0) * 0.6) / e.x;
-  vec3 N = normalize(vN + vec3(-g.x, 0.0, -g.y) * 0.16 * detail);
+  vec2 p3 = q * 7.5 + vec2(t * 0.9, -t * 0.6);
+  float k0 = fbm(p3); float kx = fbm(p3 + e.xy); float kz = fbm(p3 + e.yx);
+  vec2 g3 = vec2(kx - k0, kz - k0) / e.x;
+  float fineAtten = 1.0 - smoothstep(25.0, 120.0, vDist);
+  vec3 N = normalize(vN + vec3(-g.x, 0.0, -g.y) * 0.30 * detail + vec3(-g3.x, 0.0, -g3.y) * 0.07 * fineAtten);
 
   vec3 V = normalize(uCam - vWorld);
   float ndv = max(dot(N, V), 0.0);
@@ -152,15 +156,19 @@ void main(){
   R.y = abs(R.y);
   vec3 refl = skyColor(R);
 
-  vec3 deep = vec3(0.002, 0.010, 0.016);
-  vec3 shallow = vec3(0.02, 0.11, 0.12);
+  vec3 deep = vec3(0.004, 0.022, 0.036);
+  vec3 shallow = vec3(0.03, 0.19, 0.21);
   float crest = clamp(vH * 0.5 + 0.5, 0.0, 1.0);
   vec3 body = mix(deep, shallow, crest * crest * 1.1 + 0.06);
   body += vec3(0.01, 0.05, 0.05) * smoothstep(0.55, 1.0, crest) * max(dot(vec3(0.0,1.0,0.0), uMoonDir) + 0.3, 0.0);
-  body *= 0.5 + 0.7 * max(dot(N, uMoonDir), 0.0) + uFlash * 1.2;
+  body *= 0.6 + 0.8 * max(dot(N, uMoonDir), 0.0) + uFlash * 1.2;
+  // subsurface glow: light shining through thin wave crests toward the viewer
+  float sss = pow(max(dot(V, -uMoonDir), 0.0), 3.0) * smoothstep(0.35, 1.0, crest);
+  body += vec3(0.03, 0.22, 0.20) * sss * 0.9;
 
   vec3 col = mix(body, refl, fres);
-  float sp = pow(max(dot(R, uMoonDir), 0.0), 500.0) * 16.0 + pow(max(dot(R, uMoonDir), 0.0), 60.0) * 0.7;
+  float rd = max(dot(R, uMoonDir), 0.0);
+  float sp = pow(rd, 700.0) * 26.0 + pow(rd, 90.0) * 1.1 + pow(rd, 12.0) * 0.12;
   col += vec3(0.85, 0.95, 1.0) * sp;
 
   float nf = fbm(q * 0.9 + vec2(t * 0.1, -t * 0.06));

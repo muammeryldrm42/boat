@@ -91,7 +91,7 @@ export default function Scene() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2.5));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.35;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
@@ -342,7 +342,7 @@ export default function Scene() {
     });
     const composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(size.clone(), 0.42, 0.7, 0.92);
+    const bloom = new UnrealBloomPass(size.clone(), 0.5, 0.8, 0.85);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
     const finish = new ShaderPass(FINISH_SHADER);
@@ -622,7 +622,7 @@ export default function Scene() {
       fill.position.set(sailing.x - 24, 16, sailing.z - 30);
       fill.target.position.set(sailing.x, 6, sailing.z);
       hemi.intensity = 1.6 + flash * 3.5;
-      bloom.strength = 0.42 + flash * 0.5;
+      bloom.strength = 0.5 + flash * 0.5;
       const spN = Math.min(1, sailing.speed / 24);
       finish.uniforms.uSpeed.value += (spN * spN - finish.uniforms.uSpeed.value) * Math.min(1, dt * 2);
       const fovT = 48 + spN * 9;
