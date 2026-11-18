@@ -113,7 +113,7 @@ void main(){
   vec3 dPdz = vec3(-dxz, dyz, 1.0 - dzz);
   vN = normalize(cross(dPdz, dPdx));
   float jac = (1.0 - dxx) * (1.0 - dzz) - dxz * dxz;
-  vFoam = max(smoothstep(0.62, 0.3, jac), smoothstep(0.55, 1.0, disp.y / max(sumA, 0.001)) * 0.55 * fade);
+  vFoam = max(smoothstep(0.7, 0.36, jac), smoothstep(0.6, 1.0, disp.y / max(sumA, 0.001)) * 0.5 * fade);
   vH = disp.y / max(sumA, 0.001);
   vec3 wp = vec3(p.x + disp.x, disp.y, p.y + disp.z);
   vWorld = wp;

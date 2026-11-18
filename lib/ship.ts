@@ -462,6 +462,10 @@ export function createShip(): Ship {
     const wb = w * bottomScale;
     makeSail(V3(-w / 2, y - 0.1, z), V3(w / 2, y - 0.1, z), V3(-wb / 2, y - h, z), V3(wb / 2, y - h, z),
       { seed, tatter, emblem }, V3(0, 0, 1), amp, seed * 0.7, 0.28, 0.18);
+    // footrope and stirrups for the yard crew
+    const half = (w + 2.2) / 2;
+    rope(V3(-half + 0.9, y - 1.1, z - 0.6), V3(half - 0.9, y - 1.1, z - 0.6), 0.045, 0.012);
+    for (const f of [-0.8, -0.5, -0.2, 0.2, 0.5, 0.8]) rope(V3(f * half, y - 0.14, z - 0.12), V3(f * half, y - 1.1, z - 0.6), 0.03);
     // lifts and sheets
     rope(V3(-(w + 2.2) / 2, y, z), V3(-0.25, m.base + m.lower + 0.4, m.z), 0.04, 0.02);
     rope(V3((w + 2.2) / 2, y, z), V3(0.25, m.base + m.lower + 0.4, m.z), 0.04, 0.02);

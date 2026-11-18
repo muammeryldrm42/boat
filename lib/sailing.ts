@@ -58,8 +58,8 @@ export class Sailing {
   x = 0;
   z = 0;
   heading = 0;
-  speed = 2.4;
-  sail = 0.75;
+  speed = 6;
+  sail = 0.85;
   rudder = 0;
   drive = 0;
   windBase = 2.3; // direction the wind comes FROM, same convention as heading

@@ -123,7 +123,7 @@ export default function Scene() {
     const uCam = { value: new THREE.Vector3() };
     const uCenter = { value: new THREE.Vector2() };
     const uCover = { value: storm ? 1.0 : 0.3 };
-    const seaAmp = storm ? 1.3 : 0.38;
+    const seaAmp = storm ? 1.3 : 0.85;
 
     // ---- sky ----
     const skyMat = new THREE.ShaderMaterial({
@@ -207,6 +207,22 @@ export default function Scene() {
       w.m.position.set(x, waveHeight(x, z, t, seaAmp) + 0.12, z);
       w.m.rotation.y = Math.random() * Math.PI;
     };
+
+    // ---- bow spray ----
+    const SPRAY_N = 90;
+    const spray: { s: THREE.Sprite; v: THREE.Vector3; age: number; life: number; alive: boolean }[] = [];
+    for (let i = 0; i < SPRAY_N; i++) {
+      const m = new THREE.SpriteMaterial({
+        map: mistTex, color: new THREE.Color(0.85, 0.95, 1.0), transparent: true, depthWrite: false, opacity: 0,
+        blending: THREE.AdditiveBlending, fog: true,
+      });
+      const sp = new THREE.Sprite(m);
+      sp.visible = false;
+      scene.add(sp);
+      spray.push({ s: sp, v: new THREE.Vector3(), age: 0, life: 1, alive: false });
+    }
+    let sprayCursor = 0;
+    let sprayAcc = 0;
 
     // ---- mist (very light) ----
     const mist: { s: THREE.Sprite; a: number; r: number; h: number; sp: number }[] = [];
@@ -335,7 +351,7 @@ export default function Scene() {
       const heel = sailing.windSide * sailing.sail * Math.min(1, sailing.speed / 4 + 0.25) * 0.1 * sailing.drive;
       const turnLean = -sailing.rudder * Math.min(1, sailing.speed / 4) * 0.05;
       const targetRoll = Math.atan2(hr - hl, sample.x * 2) + heel + turnLean;
-      const k = 1 - Math.exp(-dt * 3.2);
+      const k = 1 - Math.exp(-dt * 5);
       heave += (targetHeave - heave) * k;
       pitch += (targetPitch - pitch) * k;
       roll += (targetRoll - roll) * k;
@@ -343,7 +359,7 @@ export default function Scene() {
       ship.group.rotation.set(pitch, sailing.heading, roll, 'YXZ');
 
       ship.update(t, dt, { sail: sailing.sail, drive: sailing.drive, rudder: sailing.rudder, speed: sailing.speed });
-      crew.update({ t, dt, rudder: sailing.rudder, speed: sailing.speed, heel: roll, sail: sailing.sail });
+      crew.update({ t, dt, rudder: sailing.rudder, speed: sailing.speed, heel: roll, sail: sailing.sail, camDist: camera.position.distanceTo(ship.group.position) });
 
       uCenter.value.set(sailing.x, sailing.z);
 
@@ -383,6 +399,41 @@ export default function Scene() {
         const sz = w.size * (1 + f * 2.6);
         w.m.scale.set(sz, 1, sz);
         (w.m.material as THREE.MeshBasicMaterial).opacity = 0.5 * (1 - f) * Math.min(1, f * 8) * (0.4 + 0.6 * Math.min(1, sailing.speed / 3));
+      }
+
+      // bow spray: more of it the faster we go and the harder the bow digs in
+      sprayAcc += dt * Math.max(0, sailing.speed - 2.5) * (6 + Math.max(0, -pitch) * 60);
+      while (sprayAcc >= 1) {
+        sprayAcc -= 1;
+        const sp = spray[sprayCursor];
+        sprayCursor = (sprayCursor + 1) % SPRAY_N;
+        const side = Math.random() > 0.5 ? 1 : -1;
+        worldPt(side * (0.4 + Math.random() * 0.6), 17.6 + Math.random() * 1.2, wp);
+        sp.s.position.set(wp.x, waveHeight(wp.x, wp.z, t, seaAmp) + 0.3, wp.z);
+        const fx = Math.sin(sailing.heading);
+        const fz = Math.cos(sailing.heading);
+        const sx = Math.cos(sailing.heading) * side;
+        const sz = -Math.sin(sailing.heading) * side;
+        const out = 1.5 + Math.random() * 2.5;
+        sp.v.set(fx * sailing.speed * 0.55 + sx * out, 2.5 + Math.random() * 3.5, fz * sailing.speed * 0.55 + sz * out);
+        sp.age = 0;
+        sp.life = 0.7 + Math.random() * 0.6;
+        sp.alive = true;
+        sp.s.visible = true;
+      }
+      for (const sp of spray) {
+        if (!sp.alive) continue;
+        sp.age += dt;
+        if (sp.age >= sp.life) {
+          sp.alive = false;
+          sp.s.visible = false;
+          continue;
+        }
+        sp.v.y -= 9 * dt;
+        sp.s.position.addScaledVector(sp.v, dt);
+        const f = sp.age / sp.life;
+        sp.s.scale.setScalar(0.5 + f * 1.4);
+        (sp.s.material as THREE.SpriteMaterial).opacity = 0.35 * (1 - f);
       }
 
       // lightning
@@ -464,6 +515,7 @@ export default function Scene() {
       rainMat.dispose();
       wakeGeo.dispose();
       wake.forEach((w) => (w.m.material as THREE.Material).dispose());
+      spray.forEach((sp) => (sp.s.material as THREE.SpriteMaterial).dispose());
       mistTex.dispose();
       mist.forEach((m) => (m.s.material as THREE.SpriteMaterial).dispose());
       composer.dispose();

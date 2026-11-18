@@ -36,6 +36,15 @@ const crewStyle = (i: number, extra: Partial<CrewSpawn['style']> = {}): CrewSpaw
   ...extra,
 });
 
+function yardCrew(m: { z: number; base: number }, yardY: number, len: number, xs: number[], seed: number): CrewSpawn[] {
+  return xs.map((x, i) => ({
+    role: 'yard' as const,
+    pos: [Math.max(-len / 2 + 1, Math.min(len / 2 - 1, x)), m.base + yardY - 1.1, m.z + 0.62 - 0.6] as [number, number, number],
+    phase: seed + i * 1.9,
+    style: crewStyle(seed + i, { hat: i % 2 ? 'bandana' : 'none', rolled: true }),
+  }));
+}
+
 function galleonCrew(): CrewSpawn[] {
   const fore = mastDefs[0];
   const main = mastDefs[1];
@@ -50,7 +59,7 @@ function galleonCrew(): CrewSpawn[] {
       pos: [0, 1.7, -10.9],
       range: { axis: 'x', min: -3.3, max: 3.3 },
       style: crewStyle(1, {
-        coat: 0x1f3342, hat: 'tricorn', hatColor: 0x14110e, beard: true, hair: 0x5a5047, skin: 0xc99068,
+        coat: 0x1f3342, hat: 'tricorn', hatColor: 0x14110e, beard: true, plume: true, hair: 0x5a5047, skin: 0xc99068,
         shirt: 0xd8d0bb, scale: 1.04, rolled: false,
       }),
     },
@@ -67,10 +76,18 @@ function galleonCrew(): CrewSpawn[] {
     { role: 'hauler', pos: [-3.4, 0, -3.4], phase: 1.1, style: crewStyle(10, { beard: true }) },
     { role: 'leaner', pos: [4.05, 0, 5.6], yaw: Math.PI / 2, phase: 2.0, style: crewStyle(11) },
     { role: 'leaner', pos: [-4.1, 0, 7.2], yaw: -Math.PI / 2, phase: 4.0, style: crewStyle(12, { hat: 'cap' }) },
-    { role: 'swabber', pos: [2.2, 0, -3.0], range: { axis: 'z', min: -7.0, max: -1.2 }, style: crewStyle(13, { hat: 'bandana' }) },
+    { role: 'swabber', pos: [2.0, 0, -3.0], range: { axis: 'z', min: -7.0, max: -1.2 }, style: crewStyle(13, { hat: 'bandana' }) },
     { role: 'watch', pos: [0.0, 0.95, 16.2], phase: 0.8, style: crewStyle(14, { hat: 'none', beard: true }) },
-    { role: 'talker', pos: [2.4, 0, 6.4], yaw: Math.PI / 4, partner: 0, phase: 0.4, style: crewStyle(15, { vest: 0x2e3a4a }) },
-    { role: 'talker', pos: [3.2, 0, 7.2], yaw: Math.PI / 4 + Math.PI, partner: 1, phase: 2.2, style: crewStyle(16, { hat: 'cap' }) },
+    { role: 'talker', pos: [-2.3, 0, 6.0], yaw: Math.PI / 4, partner: 0, phase: 0.4, style: crewStyle(15, { vest: 0x2e3a4a, scarf: 0x8a2a24 }) },
+    { role: 'talker', pos: [-1.5, 0, 6.8], yaw: Math.PI / 4 + Math.PI, partner: 1, phase: 2.2, style: crewStyle(16, { hat: 'cap', ponytail: true }) },
+
+    // sailors working on the yards (standing on the footropes)
+    ...yardCrew(main, 8.6, 17.6, [-5.6, -2.7, 3.1, 6.0], 20),
+    ...yardCrew(main, 17.2, 14.2, [-3.2, 3.6], 24),
+    ...yardCrew(fore, 7.6, 15.4, [-4.2, 4.0], 28),
+    { role: 'sitter', pos: [-0.6, 0.28, 2.4], yaw: Math.PI, phase: 0.5, style: crewStyle(30, { hat: 'bandana' }) },
+    { role: 'sitter', pos: [0.9, 0.28, 4.5], yaw: 0, phase: 2.5, style: crewStyle(31, { beard: true }) },
+    { role: 'walker', pos: [2.0, 0, 5.0], range: { axis: 'z', min: 1.5, max: 10.5 }, style: crewStyle(32, { scarf: 0x2e4a5a }) },
   ];
 }
 
@@ -79,7 +96,7 @@ export const GALLEON: VesselSpec = {
   name: 'Galleon',
   create: createShip,
   crew: galleonCrew(),
-  physics: { maxSpeed: 7.2, accel: 0.22, turnRate: 0.24, rudderRate: 0.7, sailRate: 0.3 },
+  physics: { maxSpeed: 15, accel: 0.45, turnRate: 0.3, rudderRate: 0.8, sailRate: 0.35 },
   sternZ: -L / 2,
   waveSample: { x: 3.6, z: 13 },
   restHeight: 2.55,
